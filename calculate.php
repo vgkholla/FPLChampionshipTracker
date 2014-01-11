@@ -3,7 +3,7 @@
 /**************CHANGE CURRENT GAME WEEK BEFORE RUNNING************************/
 
 //current GW
-$currentGW = 16;
+$currentGW = 20;
 
 //threshold
 $threshold = 5;
@@ -81,10 +81,9 @@ function retrievePageAndCalculateTotals($teamMembers, &$teamPoints, $currentGW) 
 	    // $pageHTML contains the html source 
 	    $pageHTML = curl_exec($ch); 
 
+
 	    //extract points of current gameweek
 	    $pattern = "@<td class=\"ismCol2\">(.*)</td>@i";
-
-	    //$pattern = "@<a href=\"" . $patternURL . "\">(.*)</a></td>@";
     	preg_match_all($pattern, $pageHTML, $matches);
 
 	   	//pick up the matches
@@ -94,7 +93,26 @@ function retrievePageAndCalculateTotals($teamMembers, &$teamPoints, $currentGW) 
 	    $teamPoints[$name] = intval($allMatches[$currentGW - 1]);
 
 	    //print points
+	   	echo $teamPoints[$name] . " - ";
+
+
+	    //get points hit
+	    $pattern = "@<td class=\"ismCol5\">(.*)</td>@i";
+    	preg_match_all($pattern, $pageHTML, $matches);
+
+	   	//pick up the matches
+	   	$allMatches = $matches[1];
+
+	   	//print points hit
+	   	echo $allMatches[$currentGW - 1] . " = ";
+	   	
+	   	//take points hit
+	    $teamPoints[$name] -= intval($allMatches[$currentGW - 1]);
+
+
+	   	//print final points
 	   	echo $teamPoints[$name] . "\n";
+	   
 
 	    //add to total
 	    $total += $teamPoints[$name];
