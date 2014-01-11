@@ -2,6 +2,12 @@
 
 /**************CHANGE CURRENT GAME WEEK BEFORE RUNNING************************/
 
+//current GW
+$currentGW = 16;
+
+//threshold
+$threshold = 5;
+
 //#teamABS members: Holla, Kutty, Chandak, Hannibal
 $teamABS = ['Sardaukar' => '1139641',
 			'Pointus Maximus' => '954786',
@@ -22,21 +28,21 @@ $teamSamPoints = [];
 //calculate totals
 //#teamABS
 echo "\nRetrieving data for #teamABS:\n";
-$teamABSTotal = retrievePageAndCalculateTotals($teamABS, $teamABSPoints);
+$teamABSTotal = retrievePageAndCalculateTotals($teamABS, $teamABSPoints, $currentGW);
 
 //#teamSam
 echo "\nRetrieving data for #teamSam:\n";
-$teamSamTotal = retrievePageAndCalculateTotals($teamSam, $teamSamPoints);
+$teamSamTotal = retrievePageAndCalculateTotals($teamSam, $teamSamPoints, $currentGW);
 
 //calculate week's average
 //#teamABS
 echo "\nCalculating average for #teamABS:\n";
-$teamABSAverage = getAverage($teamABSPoints, $teamABSTotal);
+$teamABSAverage = getAverage($teamABSPoints, $teamABSTotal, $threshold);
 echo "#teamABS average this week: " . $teamABSAverage . "\n";
 
 //#teamSam
 echo "\nCalculating average for #teamSam:\n";
-$teamSamAverage = getAverage($teamSamPoints, $teamSamTotal);
+$teamSamAverage = getAverage($teamSamPoints, $teamSamTotal, $threshold);
 echo "#teamSam average this week: " . $teamSamAverage . "\n";
 
 //retrieve current points tally
@@ -57,9 +63,7 @@ file_put_contents($file, json_encode($pointsTally));
 
 //done!
 
-function retrievePageAndCalculateTotals($teamMembers, &$teamPoints) {
-	//current GW
-	$currentGW = 20;
+function retrievePageAndCalculateTotals($teamMembers, &$teamPoints, $currentGW) {
 	// create curl resource 
 	$ch = curl_init(); 
 	//init total
@@ -68,8 +72,8 @@ function retrievePageAndCalculateTotals($teamMembers, &$teamPoints) {
 	foreach ($teamMembers as $name => $id) {
 		echo "Extracting points for " . $name . "... ";
 		//build the URL to retrieve points
-		$tailOfURL = "/entry/" . $id . "/event-history/" . $currentGW . "/";
-		$pointsURL = "http://fantasy.premierleague.com" . $tailOfURL;
+		$personalURL = "/entry/" . $id . "/history/";
+		$pointsURL = "http://fantasy.premierleague.com" . $personalURL;
 		// set url 
 	    curl_setopt($ch, CURLOPT_URL, $pointsURL); 
 	    //return the transfer as a string 
@@ -77,18 +81,23 @@ function retrievePageAndCalculateTotals($teamMembers, &$teamPoints) {
 	    // $pageHTML contains the html source 
 	    $pageHTML = curl_exec($ch); 
 
-	    //extract required points
-	    $pattern = "@<a href=\"" . $tailOfURL . "\">(.*)</a></dd>@i";
-	    preg_match($pattern, $pageHTML, $matches);
+	    //extract points of current gameweek
+	    $pattern = "@<td class=\"ismCol2\">(.*)</td>@i";
 
-	    //print points
-	    echo $matches[1] . "\n";
+	    //$pattern = "@<a href=\"" . $patternURL . "\">(.*)</a></td>@";
+    	preg_match_all($pattern, $pageHTML, $matches);
+
+	   	//pick up the matches
+	   	$allMatches = $matches[1];
 
 	    //record points
-	    $teamPoints[$name] = intval($matches[1]);
+	    $teamPoints[$name] = intval($allMatches[$currentGW - 1]);
+
+	    //print points
+	   	echo $teamPoints[$name] . "\n";
 
 	    //add to total
-	    $total += $matches[1];
+	    $total += $teamPoints[$name];
 	}
 
 	// close curl resource to free up system resources 
@@ -99,7 +108,7 @@ function retrievePageAndCalculateTotals($teamMembers, &$teamPoints) {
 }
 
 
-function getAverage($teamPoints, $total) {
+function getAverage($teamPoints, $total, $threshold) {
 	//calculate average without pruning
 	$noOfMembers = count($teamPoints);
 	if ($noOfMembers == 0) {
@@ -107,9 +116,6 @@ function getAverage($teamPoints, $total) {
 		return 0;
 	}
 	$teamAverage = $total / $noOfMembers;
-	
-	//set drop threshold
-	$threshold = 10;
 
 	//find min
 	$minName = min(array_keys($teamPoints, min($teamPoints)));
@@ -130,6 +136,4 @@ function getAverage($teamPoints, $total) {
 	//return average
 	return $total / $noOfMembers;
 }
-
-
 ?>
