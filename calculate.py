@@ -10,7 +10,8 @@ class Config(object):
 
     PLAYERS_SECTION = 'Players'
     TEAMS_SECTION = 'Teams'
-    REQUIRED_SECTIONS = [ PLAYERS_SECTION, TEAMS_SECTION ]
+    RULES_SECTION = 'Rules'
+    REQUIRED_SECTIONS = [ PLAYERS_SECTION, TEAMS_SECTION, RULES_SECTION ]
 
     def __init__(self, configFile):
         self.config = SafeConfigParser()
@@ -34,6 +35,45 @@ class Config(object):
 
     def get_teams(self):
         return self.config.options(self.TEAMS_SECTION)
+
+    def get_max_sum_player_count(self):
+        return self.config.getint(self.RULES_SECTION, 'MaxSumPlayerCount')
+
+    def get_max_position_for_award(self):
+        return self.config.getint(self.RULES_SECTION, 'MaxPositionForAward')
+
+    def get_gw_max_average_bonus(self):
+        return self.config.getint(self.RULES_SECTION, 'GwMaxAverageBonus')
+
+    def get_gw_max_sum_bonus(self):
+        return self.config.getint(self.RULES_SECTION, 'GwMaxSumBonus')
+
+    def get_gw_positions_awards(self):
+        return self.config.get(self.RULES_SECTION, 'GwPositionsAwards').split(',')
+
+    def get_hw_mark(self):
+        return self.config.getint(self.RULES_SECTION, 'HwMark')
+
+    def get_hw_max_average_bonus(self):
+        return self.config.getint(self.RULES_SECTION, 'HwMaxAverageBonus')
+
+    def get_hw_max_sum_bonus(self):
+        return self.config.getint(self.RULES_SECTION, 'HwMaxSumBonus')
+
+    def get_hw_positions_awards(self):
+        return self.config.get(self.RULES_SECTION, 'HwPositionsAwards').split(',')
+
+    def get_eos_mark(self):
+        return self.config.getint(self.RULES_SECTION, 'Eos')
+
+    def get_eos_max_average_bonus(self):
+        return self.config.getint(self.RULES_SECTION, 'EosAverageBonus')
+
+    def get_eos_max_sum_bonus(self):
+        return self.config.getint(self.RULES_SECTION, 'EosSumBonus')
+
+    def get_eos_positions_awards(self):
+        return self.config.get(self.RULES_SECTION, 'EosPositionsAwards').split(',')
 
 class Player(object):
     """Represents a player and all associated details"""
@@ -140,7 +180,7 @@ class Team(object):
     def get_total_team_average(self):
         return self.total_average
 
-    def get_team_averages_by_gw_by_gw(self):
+    def get_team_averages_by_gw(self):
         return self.team_averages_by_gw
 
     def get_team_average_for_gw(self, gameweek):
@@ -156,21 +196,34 @@ class Team(object):
             points[player] = player[1].get_points_for_gw(gameweek)
         return sorted(points.items(), key=operator.itemgetter(1), reverse=True) 
 
+    def get_players_sorted_by_points_at_gw(self, gameweek):
+        if gameweek <= 0 or gameweek > len(self.team_averages_by_gw):
+            raise Exception('Data for GW-' + gameweek + ' does not exist')
+        points = {}
+        for player in self.players.items():
+            points[player] = 0
+            for i in xrange(gameweek):
+                points[player] = points[player] + player[1].get_points_for_gw(i + 1)
+        return sorted(points.items(), key=operator.itemgetter(1), reverse=True) 
+
     def add_points(self, points):
-        self.points = self.points + points
+        self.points = self.points + int(points)
         return self.points
 
     def get_points(self):
         return self.points
+
+class MessageSender(object):
+    """Sends provided messages to configured endpoint"""
+    
+    def __init__(self):
+        pass
+
+    def send_message(self, message):
+        print(message)
         
 if __name__ == '__main__':
-    MAX_SUM_PLAYER_COUNT = 2
-    MAX_POSITION_FOR_AWARD = 3
-
-    GW_MAX_AVERAGE_BONUS = 5
-    GW_MAX_SUM_BONUS = 2
-    POSITIONS_AWARDS = { 1 : 3, 2 : 2, 3 : 1} 
-
+    message_sender = MessageSender()
     dir_name = os.path.dirname(os.path.realpath(__file__))
     config_path = os.path.join(dir_name, 'game.config')
     config = Config(config_path)
@@ -179,53 +232,117 @@ if __name__ == '__main__':
     players = []
     for team in config.get_teams():
         team_obj = Team(team, config)
+        if len(team_obj.get_players()) < config.get_max_sum_player_count():
+            raise Exception(team.name + ' does not have enough players to calculate max top invidual players sum - ' + str(config.get_max_sum_player_count()))
         for player in team_obj.get_players().items():
             players.append(player[1])
         teams.append(team_obj)
 
     winners_by_gw = {}
-    top_three_every_gw = {}
-    max_top_sum = 0
-    max_top_teams = []
+    max_top_sum_by_gw = {}
+
+    hw_averages = {}
+    eos_averages = {}
 
     # determine team(s) that wins in each game week
-    # determine the team(s) that has the max sum for MAX_SUM_PLAYER_COUNT members
+    # determine averages at halfway and EOS
+    # determine the team(s) that has the max sum for config.get_max_sum_player_count() members
     for team in teams:
-        if len(team.get_players()) < MAX_SUM_PLAYER_COUNT:
-            raise Exception(team.name + ' does not have enough players to calculate max top invidual players sum')
-        averages_by_gw = team.get_team_averages_by_gw_by_gw()
+        averages_by_gw = team.get_team_averages_by_gw()
+        curr_average = 0
         for i in xrange(len(averages_by_gw)):
+            curr_average = curr_average + averages_by_gw[i]
+            if i == config.get_hw_mark() - 1 :
+                hw_averages[team] = curr_average
+            elif i == config.get_eos_mark() - 1 : 
+                eos_averages[team] = curr_average
+
             if i not in winners_by_gw or winners_by_gw[i][0] < averages_by_gw[i]:
                 winners_by_gw[i] = (averages_by_gw[i], [team])
             elif winners_by_gw[i][0] == averages_by_gw[i]:
                 winners_by_gw[i][1].append(team)
-        players_sorted_by_points = team.get_players_sorted_by_points_for_gw(i + 1);
-        top_players_sum = 0
-        for i in xrange(MAX_SUM_PLAYER_COUNT):
-            top_players_sum = top_players_sum + players_sorted_by_points[i][1]
-        if top_players_sum == max_top_sum:
-            max_top_teams.append(team)
-        elif top_players_sum > max_top_sum:
-            max_top_sum = top_players_sum
-            max_top_teams = [team]
+            
+            players_sorted_by_points = team.get_players_sorted_by_points_for_gw(i + 1);
+            top_players_sum = 0
+            for position in xrange(config.get_max_sum_player_count()):
+                top_players_sum = top_players_sum + players_sorted_by_points[position][1]
+            if i not in max_top_sum_by_gw or max_top_sum_by_gw[i][0] < top_players_sum:
+                max_top_sum_by_gw[i] = (top_players_sum, [team])
+            elif max_top_sum_by_gw[i][0] == top_players_sum:
+                max_top_sum_by_gw[i][1].append(team)
 
-    # add points to the team(s) that have the max sum for MAX_SUM_PLAYER_COUNT members
-    for team in max_top_teams:
-        team.add_points(GW_MAX_SUM_BONUS)
 
     # add points for the team(s) that win each GW
-    # determine top scoring players for each GW and add points to their teams ("Green Jersey")
+    # add points to the team(s) that have the max sum for config.get_max_sum_player_count() members every GW
     for gw in winners_by_gw:
         for team in winners_by_gw[gw][1]:
-            team.add_points(GW_MAX_AVERAGE_BONUS)
+            team.add_points(config.get_gw_max_average_bonus())
 
+        for team in max_top_sum_by_gw[gw][1]:
+            team.add_points(config.get_gw_max_sum_bonus())
+
+    gw_count = len(winners_by_gw)
+
+    # determine top scoring players for each GW and add points to their teams ("Green Jersey")
+    # determine top scoring players at halfway and end of season ("Yellow Jersey")
+    for gw in xrange(gw_count):
         gw_points_by_player = {}
+        points_till_now_by_player = {}
         for player in players:
             gw_points_by_player[player] = player.get_points_for_gw(gw + 1)
+            if player not in points_till_now_by_player:
+                points_till_now_by_player[player] = 0
+            points_till_now_by_player[player] = points_till_now_by_player[player] + gw_points_by_player[player]
         sorted_gw_points_by_player = sorted(gw_points_by_player.items(), key=operator.itemgetter(1), reverse=True)
-        for i in xrange(MAX_POSITION_FOR_AWARD):
+        for i in xrange(config.get_max_position_for_award()):
             team = sorted_gw_points_by_player[i][0].get_team()
-            team.add_points(POSITIONS_AWARDS[i + 1])
+            team.add_points(config.get_gw_positions_awards()[i])
 
+        points_to_add = None
+        if gw == config.get_hw_mark() - 1 :
+            points_to_add = config.get_hw_positions_awards()
+        elif gw == config.get_eos_mark() - 1 : 
+            points_to_add = config.get_eos_positions_awards()
+
+        if points_to_add is not None:
+            sorted_points_till_now_by_player = sorted(sorted_points_till_now_by_player.items(), key=operator.itemgetter(1), reverse=True)
+            for i in xrange(config.get_max_position_for_award()):
+                team = sorted_points_till_now_by_player[i][0].get_team()
+                team.add_points(config.points_to_add[i])
+
+    # halfway bonuses
+    # max sum and top two players max sum
+    if gw_count >= config.get_hw_mark() - 1:
+        add_stage_bonus(config, teams, config.get_hw_mark(), sorted_hw_averages, config.get_hw_max_average_bonus(), config.get_hw_max_sum_bonus())
+
+    # end of season bonuses
+    # max sum and top two players max sum
+    if gw_count >= config.get_eos_mark() - 1:
+        add_stage_bonus(config, teams, config.get_eos_mark(), sorted_eos_averages, config.get_eos_max_average_bonus(), config.get_eos_max_sum_bonus())
+
+    message = 'FPLBot:\n'
     for team in teams:
-        print(team.name + ' : ' + str(team.get_points()))
+        message = message + team.name + ' - ' + str(team.get_points()) + "\n"
+    
+    message_sender.send_message(message)
+
+def add_stage_bonus(config, teams, gameweek, team_averages_at_gameweek, max_avg_bonus, max_sum_bonus):
+    sorted_averages = sorted(team_averages_at_gameweek.items(), key=operator.itemgetter(1), reverse=True)
+    team = sorted_averages[0][0].get_team()
+    team.add_points(max_avg_bonus)
+    max_top_sum = 0
+    max_top_sum_teams = []
+    for team in teams:
+        players_sorted_by_points = get_players_sorted_by_points_at_gw(gameweek)
+        top_players_sum = 0
+        for position in xrange(config.get_max_sum_player_count()):
+            top_players_sum = top_players_sum + players_sorted_by_points[position][1]
+        if top_players_sum == max_top_sum:
+            max_top_sum_teams.append[team]
+        elif top_players_sum > max_top_sum:
+            max_top_sum = top_players_sum
+            max_top_sum_teams = [team]
+    for team in top_sum_teams:
+        team.add_points(max_sum_bonus)
+
+
